@@ -44,7 +44,7 @@ from .openrouter import (
 from .tasks import build_cases, default_tasks_path, generate_all_tasks, load_generated_tasks, save_generated_tasks
 from .types import PromptCase, SelectedModel
 
-LOGGER = logging.getLogger("datetime_bench")
+LOGGER = logging.getLogger("benchmarks.datetime_bench")
 
 
 def configure_logging(log_file: Path) -> None:
@@ -303,23 +303,19 @@ def _build_batches(
     models: list[SelectedModel],
     max_per_batch: int,
 ) -> list[list[tuple[int, SelectedModel]]]:
-    """Group models into batches, maximizing provider diversity per batch."""
+    """Group models into batches, spreading providers evenly.
+
+    Fills each batch up to *max_per_batch* cells.  Within a batch,
+    providers are interleaved (round-robin) so the per-provider rate
+    limiters distribute load naturally.  Multiple cells from the same
+    provider are allowed in the same batch — the rate limiter handles
+    contention.
+    """
     remaining = list(enumerate(models, start=1))
     batches: list[list[tuple[int, SelectedModel]]] = []
     while remaining:
-        batch: list[tuple[int, SelectedModel]] = []
-        providers_seen: set[str] = set()
-        for item in list(remaining):
-            sel = item[1]
-            pkey = _provider_key(sel.selected_model or "")
-            if pkey not in providers_seen and len(batch) < max_per_batch:
-                batch.append(item)
-                providers_seen.add(pkey)
-                remaining.remove(item)
-        if not batch:
-            # All remaining share providers already seen; just take next chunk
-            batch = remaining[:max_per_batch]
-            remaining = remaining[max_per_batch:]
+        batch = remaining[:max_per_batch]
+        remaining = remaining[max_per_batch:]
         batches.append(batch)
     return batches
 
