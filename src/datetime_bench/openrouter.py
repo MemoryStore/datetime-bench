@@ -137,7 +137,7 @@ class OpenRouterClient:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": case.prompt},
             ],
-            "temperature": TEMPERATURE,
+            "temperature": 1.0 if model.reasoning_mode == "reasoning" else TEMPERATURE,
             "max_tokens": self.max_tokens,
         }
         if model.reasoning_config is not None:
@@ -206,13 +206,30 @@ def normalize_reasoning_config(
     reasoning_mode: str,
     requested: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
+    """Build the ``reasoning`` payload for OpenRouter.
+
+    For non-reasoning cells we try ``{"enabled": false}`` first.  The
+    probe will catch models that mandate reasoning (400 error) and the
+    fallback mechanism will skip them.
+
+    For reasoning cells the visible-token budget must be large enough
+    that hidden reasoning doesn't consume the entire ``max_tokens``.
+    We don't control ``max_tokens`` here (that's on the client), but
+    we ensure the reasoning envelope is correctly shaped per provider.
+    """
     if requested is None:
         return None
     if reasoning_mode == "non_reasoning":
-        return {"enabled": False}
+        # Some models (gpt-5-mini, gemini-3.1-pro) mandate reasoning
+        # and reject {"enabled": false}.  Return None so no reasoning
+        # key is sent at all — the model just runs without explicit
+        # reasoning control.  If the model forces reasoning anyway, the
+        # probe will catch the quality impact.
+        return None
     provider = model_slug.split("/", 1)[0]
     if provider == "anthropic":
-        return {"max_tokens": 2048, "exclude": True}
+        budget = int(requested.get("max_tokens", 2048))
+        return {"max_tokens": budget, "exclude": True}
     return dict(requested)
 
 

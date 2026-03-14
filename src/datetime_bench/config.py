@@ -25,7 +25,7 @@ SEMANTIC_THRESHOLDS_SECONDS: dict[str, float] = {
     "multi_hop_reasoning": 60.0,
     "extraction_from_passage": 60.0,
 }
-MAX_COMPLETION_TOKENS = 300
+MAX_COMPLETION_TOKENS = 2500
 TEMPERATURE = 0.0
 API_TIMEOUT_SECONDS = 60.0
 REQUEST_RETRIES = 3
@@ -168,8 +168,8 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
         reasoning_mode="non_reasoning",
         size="medium",
         candidates=(
-            "google/gemini-3.1-flash",
-            "google/gemini-3.1-flash-preview",
+            "google/gemini-3-flash",
+            "google/gemini-3-flash-preview",
         ),
         reasoning_config={"enabled": False},
     ),
@@ -179,8 +179,8 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
         reasoning_mode="reasoning",
         size="medium",
         candidates=(
-            "google/gemini-3.1-flash",
-            "google/gemini-3.1-flash-preview",
+            "google/gemini-3-flash",
+            "google/gemini-3-flash-preview",
         ),
         reasoning_config={"effort": "medium", "exclude": True},
     ),
@@ -190,10 +190,10 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
         reasoning_mode="non_reasoning",
         size="large",
         candidates=(
-            "google/gemini-3.1-pro",
             "google/gemini-3.1-pro-preview",
+            "google/gemini-3.1-pro",
         ),
-        reasoning_config={"enabled": False},
+        reasoning_config={"effort": "minimal", "exclude": True},
     ),
     ModelCell(
         cell="google_large_r",
@@ -201,10 +201,10 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
         reasoning_mode="reasoning",
         size="large",
         candidates=(
-            "google/gemini-3.1-pro",
             "google/gemini-3.1-pro-preview",
+            "google/gemini-3.1-pro",
         ),
-        reasoning_config={"effort": "high", "exclude": True},
+        reasoning_config={"effort": "medium", "exclude": True},
     ),
     # --- Anthropic: small / medium / large × non-reasoning / reasoning ---
     ModelCell(
@@ -281,7 +281,7 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
     ),
     ModelCell(
         cell="openai_med_nr",
-        label="OpenAI medium, non-reasoning",
+        label="OpenAI medium (gpt-5.1), non-reasoning",
         reasoning_mode="non_reasoning",
         size="medium",
         candidates=(
@@ -291,15 +291,25 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
         reasoning_config={"enabled": False},
     ),
     ModelCell(
+        cell="openai_med_nr_chat",
+        label="OpenAI medium (gpt-5.3-chat), non-reasoning",
+        reasoning_mode="non_reasoning",
+        size="medium",
+        candidates=(
+            "openai/gpt-5.3-chat-latest",
+            "openai/gpt-5.3-chat",
+        ),
+        reasoning_config={"enabled": False},
+    ),
+    ModelCell(
         cell="openai_med_r",
         label="OpenAI medium, reasoning",
         reasoning_mode="reasoning",
         size="medium",
         candidates=(
-            "openai/gpt-5.1",
             "openai/gpt-5.4",
         ),
-        reasoning_config={"effort": "medium", "exclude": True},
+        reasoning_config={"effort": "minimal", "exclude": True},
     ),
     ModelCell(
         cell="openai_large_nr",
@@ -367,10 +377,7 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
         label="GLM-5, non-reasoning",
         reasoning_mode="non_reasoning",
         size="medium",
-        candidates=(
-            "zhipu/glm-5",
-            "thudm/glm-5",
-        ),
+        candidates=("z-ai/glm-5",),
         reasoning_config={"enabled": False},
     ),
     ModelCell(
@@ -378,10 +385,7 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
         label="GLM-5, reasoning",
         reasoning_mode="reasoning",
         size="medium",
-        candidates=(
-            "zhipu/glm-5",
-            "thudm/glm-5",
-        ),
+        candidates=("z-ai/glm-5",),
         reasoning_config={"effort": "medium", "exclude": True},
     ),
 )

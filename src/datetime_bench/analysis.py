@@ -464,10 +464,14 @@ def _recommendations(
         )
     reasoning_deltas = []
     for format_key in sorted({row["format"] for row in mode_rows}):
-        reasoning_row = next(row for row in mode_rows if row["mode"] == "reasoning" and row["format"] == format_key)
-        non_reasoning_row = next(
-            row for row in mode_rows if row["mode"] == "non_reasoning" and row["format"] == format_key
+        reasoning_row = next(
+            (row for row in mode_rows if row["mode"] == "reasoning" and row["format"] == format_key), None
         )
+        non_reasoning_row = next(
+            (row for row in mode_rows if row["mode"] == "non_reasoning" and row["format"] == format_key), None
+        )
+        if reasoning_row is None or non_reasoning_row is None:
+            continue
         reasoning_deltas.append(
             {
                 "format": format_key,
