@@ -1,0 +1,15 @@
+category,cost_usd,name
+total,15.366276,all
+model_cell,1.421176,large_non_reasoning
+model_cell,9.31548,large_reasoning
+model_cell,0.855037,med_non_reasoning
+model_cell,3.572759,med_reasoning
+model_cell,0.067664,small_non_reasoning
+model_cell,0.134161,small_reasoning
+task_type,1.519658,direct_generation
+task_type,2.528313,edge_cases
+task_type,3.062683,extraction_from_passage
+task_type,1.464427,format_conversion
+task_type,3.049672,multi_hop_reasoning
+task_type,1.189798,multiple_choice_validation
+task_type,2.551726,temporal_arithmetic

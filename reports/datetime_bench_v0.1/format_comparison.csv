@@ -1,0 +1,4 @@
+accuracy_ci_high,accuracy_ci_low,calendar_consistency_rate,extraction_cleanliness_rate,format,format_compliance_mean,n,overall_accuracy,syntactic_validity_rate
+0.943053,0.907818,,0.969048,iso_8601,0.991333,840,0.927381,0.996429
+0.887994,0.842001,0.9,0.97381,natural_language,0.944664,840,0.866667,0.996429
+0.905497,0.86242,0.913889,0.953571,rfc_2822,0.974654,840,0.885714,0.995238
