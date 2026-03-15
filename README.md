@@ -2,13 +2,16 @@
 
 Benchmark for measuring how reliably LLMs generate datetime strings across seven output formats.
 
-> [!TIP]
+> [!NOTE]
 > _datetime-bench_ was built for [Memory Store](https://memory.store), a cognitive memory architecture for LLM applications. Memory Store uses LLMs to resolve relative time expressions into grounded timestamps for episodic memory, making format choice a production concern.
 > 
 > Follow [@memorydotstore](https://x.com/memorydotstore) or [@diwanksingh](https://x.com/diwanksingh) for updates.
 
 
-## Key finding
+## tl;dr
+
+> [!TIP]
+> If you ever find yourself asking an LLM to output a structured date (say `Current date/time is XXX. Output structured timestamp for 3 days ago, same time.`) then **always** prefer the RFC 3339 format. LLMs are significantly better at it.
 
 Format choice affects accuracy by up to 40 percentage points. The top three formats — iso_8601 (86.83%), python_datetime (86.52%), and rfc_3339 (86.40%) — form a statistically tight cluster, while unix_epoch (46.60%) exposes a fundamental gap in numeric datetime reasoning. Formats that include weekday names pay a 5–6 point penalty from day-of-week computation errors.
 
@@ -57,14 +60,14 @@ Total: 235 scenarios. Each is rendered in all 7 output formats, producing 1,645 
 | Format | Example |
 |---|---|
 | iso_8601 | `2025-01-15T09:30:00-05:00` |
-| rfc_3339 | `2025-01-15T09:30:00-05:00` |
+| rfc_3339 | `2026-03-15 00:54:04Z` |
 | python_datetime | `2025-01-15 09:30:00-05:00` |
 | rfc_2822 | `Wed, 15 Jan 2025 09:30:00 -0500` |
 | javascript_date | `Wed Jan 15 2025 09:30:00 GMT-0500 (EST)` |
 | natural_language | `Wednesday, January 15, 2025 at 9:30 AM EST` |
 | unix_epoch | `1736951400` |
 
-[ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) is a broad standard covering dates, times, durations, intervals, recurring intervals, and week dates. [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) is a narrow profile of ISO 8601 that covers only timestamps with explicit UTC offsets. In this benchmark the task always asks for a full timestamp, so the two formats produce identical output. The distinction matters for system-prompt contracts: "RFC 3339" names an unambiguous shape, while "ISO 8601" names a family of shapes — a prompt asking for "ISO 8601" could legally receive a week-date or a duration.
+**ISO 8601 vs RFC 3339:** [ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) is a broad standard covering dates, times, durations, intervals, recurring intervals, and week dates. [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) is a narrow profile of ISO 8601 that covers only timestamps with explicit UTC offsets. In this benchmark the task always asks for a full timestamp, so the two formats produce identical output. The distinction matters for system-prompt contracts: "RFC 3339" names an unambiguous shape, while "ISO 8601" names a family of shapes — a prompt asking for "ISO 8601" could legally receive a week-date or a duration. You can read more about this [here](https://www.reddit.com/r/ISO8601/comments/p572xy/rfc_3339_versus_iso_8601/), or see a cool visualization [here](https://ijmacd.github.io/rfc3339-iso8601/)
 
 **24 model cells** across five provider families:
 
