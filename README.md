@@ -6,6 +6,12 @@ Benchmark for measuring how reliably LLMs generate datetime strings across seven
 
 Format choice affects accuracy by up to 40 percentage points. The top three formats — iso_8601 (86.83%), python_datetime (86.52%), and rfc_3339 (86.40%) — form a statistically tight cluster, while unix_epoch (46.60%) exposes a fundamental gap in numeric datetime reasoning. Formats that include weekday names pay a 5–6 point penalty from day-of-week computation errors.
 
+## Why this benchmark
+
+LLM applications routinely turn relative datetime mentions — "last Tuesday", "three hours ago", "the meeting after lunch" — into grounded timestamps. Memory Store does this for episodic memory: every time a user says something happened, an LLM resolves the reference into an absolute datetime (a process called deixis resolution). The output format matters because it determines how reliably downstream code can parse the timestamp and whether the result is portable across languages and runtimes. A format that models generate incorrectly 10% of the time means 10% of memories get silently wrong dates.
+
+This benchmark measures which datetime output format LLMs generate most reliably under zero-shot instruction. It does not test parsing, round-tripping, or human readability — only first-attempt generation accuracy when a system prompt specifies the target format.
+
 ## v0.2 results
 
 24 model cells across five provider families. 7 formats, 235 scenarios per format, 39,480 total API calls. Cost: $148.45.
@@ -52,7 +58,7 @@ Total: 235 scenarios. Each is rendered in all 7 output formats, producing 1,645 
 | natural_language | `Wednesday, January 15, 2025 at 9:30 AM EST` |
 | unix_epoch | `1736951400` |
 
-iso_8601 and rfc_3339 differ only in spec scope — RFC 3339 is a strict profile of ISO 8601. Models produce identical output for both in practice.
+[ISO 8601](https://en.wikipedia.org/wiki/ISO_8601) is a broad standard covering dates, times, durations, intervals, recurring intervals, and week dates. [RFC 3339](https://datatracker.ietf.org/doc/html/rfc3339) is a narrow profile of ISO 8601 that covers only timestamps with explicit UTC offsets. In this benchmark the task always asks for a full timestamp, so the two formats produce identical output. The distinction matters for system-prompt contracts: "RFC 3339" names an unambiguous shape, while "ISO 8601" names a family of shapes — a prompt asking for "ISO 8601" could legally receive a week-date or a duration.
 
 **24 model cells** across five provider families:
 
@@ -218,6 +224,12 @@ datetime-bench
 Raw artifacts go to `runs/`. Analysis outputs go to `reports/`. Each run is versioned.
 
 Budget caps: $250 soft (warns), $300 hard (aborts). Execution runs 12 cells in parallel with per-provider rate limiting.
+
+## Origin
+
+datetime-bench was built for [Memory Store](https://memory.store), a cognitive memory architecture for LLM applications. Memory Store uses LLMs to resolve relative time expressions into grounded timestamps for episodic memory, making format choice a production concern.
+
+Follow [@diwanksingh](https://x.com/diwanksingh) for updates.
 
 ## Repo layout
 

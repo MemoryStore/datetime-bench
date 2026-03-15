@@ -1,5 +1,7 @@
 # Datetime Benchmark Program Report
 
+> **Data note**: This report was written against the initial 6-cell v0.2 run (6 model cells, n=1,410 per format, 9,870 calls, $26.39). The final v0.2 baseline expanded to 24 model cells across five provider families (n≈5,640 per format, 39,480 calls, $148.45). The 24-cell numbers are in [LEARNINGS.md](LEARNINGS.md) and the [README](../../README.md). Rankings and conclusions are unchanged; absolute scores shifted down ~4 points because the broader sample includes weaker models (Qwen 3.5-9B, GLM-5 without reasoning).
+
 This report summarizes the datetime-format benchmark program through `v0.2`. It ties together the earlier three-format runs, the format expansion, the few-shot extension, and the current `v0.2` baseline.
 
 ## Executive Summary
@@ -23,7 +25,7 @@ The clearest negative result is also stable: `unix_epoch` does not behave like a
 | `v0.1` baseline | same 3 formats | `iso_8601` stayed on top at `92.74%` | `$7.454499` |
 | Few-shot extension | `natural_language` only | three exemplars lifted `natural_language` from `86.67%` to `91.55%` | `$2.947685` |
 | `v0.1.5` | 6 formats | `python_datetime` moved to the top at `93.81%`; `rfc_3339` stayed close at `93.21%` | `$15.366276` |
-| `v0.2` | 7 formats, expanded tasks, strict scoring | `rfc_3339` moved into first place at `90.99%`, but remained statistically tied with `python_datetime` and `iso_8601` | `$26.388947` |
+| `v0.2` (6-cell) | 7 formats, expanded tasks, strict scoring | `rfc_3339` led at `90.99%` in 6-cell sample; 24-cell final: `iso_8601` `86.83%` (see LEARNINGS.md) | `$26.388947` (6-cell); `$148.45` (24-cell total) |
 
 The early pilot is not preserved as a versioned artifact because it was superseded by the committed three-format baseline. It still matters because it showed that the headline ranking was not an artifact of one token budget or one reasoning configuration.
 
