@@ -11,7 +11,7 @@ Benchmark for measuring how reliably LLMs generate datetime strings across seven
 ## tl;dr
 
 > [!TIP]
-> If you ever find yourself asking an LLM to output a structured date (say `Current date/time is XXX. Output structured timestamp for 3 days ago, same time.`) then **always** prefer the RFC 3339 format. LLMs are significantly better at it.
+> If you ever find yourself asking an LLM to output a structured date (say `Current date/time is XXX. Output structured timestamp for 3 days ago, same time.`) then **ALWAYS** prefer the [RFC 3339](https://ijmacd.github.io/rfc3339-iso8601/) format. LLMs are significantly better at it.
 
 Format choice affects accuracy by up to 40 percentage points. The top three formats — iso_8601 (86.83%), python_datetime (86.52%), and rfc_3339 (86.40%) — form a statistically tight cluster, while unix_epoch (46.60%) exposes a fundamental gap in numeric datetime reasoning. Formats that include weekday names pay a 5–6 point penalty from day-of-week computation errors.
 
