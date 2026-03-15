@@ -2,6 +2,12 @@
 
 Benchmark for measuring how reliably LLMs generate datetime strings across seven output formats.
 
+> [!TIP]
+> _datetime-bench_ was built for [Memory Store](https://memory.store), a cognitive memory architecture for LLM applications. Memory Store uses LLMs to resolve relative time expressions into grounded timestamps for episodic memory, making format choice a production concern.
+> 
+> Follow [@memorydotstore](https://x.com/memorydotstore) or [@diwanksingh](https://x.com/diwanksingh) for updates.
+
+
 ## Key finding
 
 Format choice affects accuracy by up to 40 percentage points. The top three formats — iso_8601 (86.83%), python_datetime (86.52%), and rfc_3339 (86.40%) — form a statistically tight cluster, while unix_epoch (46.60%) exposes a fundamental gap in numeric datetime reasoning. Formats that include weekday names pay a 5–6 point penalty from day-of-week computation errors.
@@ -224,12 +230,6 @@ datetime-bench
 Raw artifacts go to `runs/`. Analysis outputs go to `reports/`. Each run is versioned.
 
 Budget caps: $250 soft (warns), $300 hard (aborts). Execution runs 12 cells in parallel with per-provider rate limiting.
-
-## Origin
-
-datetime-bench was built for [Memory Store](https://memory.store), a cognitive memory architecture for LLM applications. Memory Store uses LLMs to resolve relative time expressions into grounded timestamps for episodic memory, making format choice a production concern.
-
-Follow [@diwanksingh](https://x.com/diwanksingh) for updates.
 
 ## Repo layout
 
