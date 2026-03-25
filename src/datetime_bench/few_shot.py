@@ -12,18 +12,17 @@ from pathlib import Path
 from typing import Any
 
 from .analysis import load_results, load_selections, run_analysis
-from .config import BENCH_ROOT, SEED
+from .config import BENCH_ROOT, REQUEST_DELAY_SECONDS, SEED
 from .evaluation import BudgetTracker
+from .layout import timestamp_utc
 from .openrouter import OpenRouterClient, RateLimiter, serialize_selections
 from .rerun import RERUN_MODEL_SELECTION, RERUN_RESULTS_DIR
 from .runner import (
-    REQUEST_DELAY_SECONDS,
     append_result,
     configure_logging,
     execute_case,
     load_completed_case_ids,
     load_or_generate_tasks,
-    timestamp_utc,
 )
 from .tasks import build_cases, default_tasks_path, generate_all_tasks
 from .tasks.base import FORMAT_KEYS
@@ -73,8 +72,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 async def main_async(args: argparse.Namespace) -> int:
-    configure_logging()
-    EXTENSION_RUN_ROOT.mkdir(parents=True, exist_ok=True)
+    run_root = args.results_dir.parent
+    run_summary_path = run_root / "run_summary.json"
+    selection_snapshot_path = run_root / "model_selection.json"
+    log_file = run_root / "datetime-bench.log"
+
+    configure_logging(log_file)
+    run_root.mkdir(parents=True, exist_ok=True)
     args.results_dir.mkdir(parents=True, exist_ok=True)
     args.report_dir.mkdir(parents=True, exist_ok=True)
 
@@ -115,8 +119,8 @@ async def main_async(args: argparse.Namespace) -> int:
         "max_tokens": args.max_tokens,
         "budget": budget.summary(),
     }
-    EXTENSION_RUN_SUMMARY.write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
-    EXTENSION_SELECTION_SNAPSHOT.write_text(json.dumps(serialize_selections(selections), indent=2), encoding="utf-8")
+    run_summary_path.write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
+    selection_snapshot_path.write_text(json.dumps(serialize_selections(selections), indent=2), encoding="utf-8")
 
     report = run_analysis(
         results_dir=args.results_dir,

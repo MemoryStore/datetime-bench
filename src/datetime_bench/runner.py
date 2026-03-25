@@ -38,6 +38,8 @@ from .openrouter import (
     deserialize_selections,
     estimate_cost,
     extract_message_content,
+    reasoning_control_mode,
+    request_temperature_for_model,
     serialize_selections,
     usage_from_payload,
 )
@@ -472,6 +474,7 @@ async def execute_case(
         payload = await client.complete_case(model, case)
         latency_ms = int(1000 * (time.perf_counter() - started))
         raw_output = extract_message_content(payload)
+        request_body = payload.get("_request_body") or {}
         cleaned = clean_output(raw_output)
         parse_result = parse_output(case, cleaned)
         evaluation = evaluate_case(case, raw_output, parse_result)
@@ -501,6 +504,9 @@ async def execute_case(
             "input_tokens": usage.get("prompt_tokens"),
             "output_tokens": usage.get("completion_tokens"),
             "reasoning_tokens": usage.get("reasoning_tokens"),
+            "request_temperature": request_body.get("temperature", request_temperature_for_model(model)),
+            "requested_reasoning_config": request_body.get("reasoning"),
+            "reasoning_control_mode": reasoning_control_mode(model),
             "estimated_cost_usd": round(estimated_cost, 8),
             "timestamp": timestamp_utc(),
             "error": None,
@@ -538,6 +544,9 @@ async def execute_case(
             "input_tokens": 0,
             "output_tokens": 0,
             "reasoning_tokens": 0,
+            "request_temperature": request_temperature_for_model(model),
+            "requested_reasoning_config": model.reasoning_config,
+            "reasoning_control_mode": reasoning_control_mode(model),
             "estimated_cost_usd": 0.0,
             "timestamp": timestamp_utc(),
             "error": f"{type(exc).__name__}: {exc}",

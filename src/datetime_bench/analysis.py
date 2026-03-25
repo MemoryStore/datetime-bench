@@ -91,6 +91,7 @@ def run_analysis(
     raw_results_csv = output_dir / RAW_RESULTS_CSV.name
     primary_results_csv = output_dir / PRIMARY_RESULTS_CSV.name
     format_comparison_csv = output_dir / FORMAT_COMPARISON_CSV.name
+    format_comparison_string_only_csv = output_dir / "format_comparison_string_only.csv"
     error_taxonomy_csv = output_dir / ERROR_TAXONOMY_CSV.name
     cost_report_csv = output_dir / COST_REPORT_CSV.name
     summary_md_path = output_dir / SUMMARY_MD.name
@@ -103,6 +104,10 @@ def run_analysis(
 
     format_rows = _format_comparison(rows)
     write_csv(format_comparison_csv, format_rows)
+
+    string_only_rows = [row for row in rows if row.get("format") != "unix_epoch"]
+    string_only_format_rows = _format_comparison(string_only_rows)
+    write_csv(format_comparison_string_only_csv, string_only_format_rows)
 
     error_rows = _error_taxonomy(rows)
     write_csv(error_taxonomy_csv, error_rows)
@@ -117,6 +122,7 @@ def run_analysis(
     stats = _pairwise_format_tests(rows)
     recommendations = _recommendations(
         format_rows=format_rows,
+        string_format_rows=string_only_format_rows,
         mode_rows=mode_rows,
         size_rows=size_rows,
         task_sensitivity_rows=task_sensitivity_rows,
@@ -147,6 +153,7 @@ def run_analysis(
         "rows": len(rows),
         "primary_results_csv": str(primary_results_csv),
         "format_comparison_csv": str(format_comparison_csv),
+        "format_comparison_string_only_csv": str(format_comparison_string_only_csv),
         "error_taxonomy_csv": str(error_taxonomy_csv),
         "cost_report_csv": str(cost_report_csv),
         "summary_md": str(summary_md_path),
@@ -453,6 +460,7 @@ def _chi_square_or_fisher(a: int, b: int, c: int, d: int) -> tuple[float, str]:
 def _recommendations(
     *,
     format_rows: list[dict[str, Any]],
+    string_format_rows: list[dict[str, Any]],
     mode_rows: list[dict[str, Any]],
     size_rows: list[dict[str, Any]],
     task_sensitivity_rows: list[dict[str, Any]],
@@ -460,9 +468,9 @@ def _recommendations(
     stats: list[dict[str, Any]],
     cost_rows: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    ranked = sorted(format_rows, key=lambda row: row.get("overall_accuracy") or 0.0, reverse=True)
+    ranked = sorted(string_format_rows, key=lambda row: row.get("overall_accuracy") or 0.0, reverse=True)
     best = ranked[0] if ranked else None
-    rfc_3339 = next((row for row in format_rows if row["format"] == "rfc_3339"), None)
+    rfc_3339 = next((row for row in string_format_rows if row["format"] == "rfc_3339"), None)
     tests_for_best = [
         item for item in stats if best and best["format"] in {item["left_format"], item["right_format"]}
     ]
@@ -734,11 +742,11 @@ def _render_summary(
     ci = recommendations.get("best_confidence_interval")
     if best_format:
         lines.append(
-            f"- Highest overall reliability: `{best_format}` at {_pct(best_accuracy)} "
+            f"- Highest string-format reliability: `{best_format}` at {_pct(best_accuracy)} "
             f"with 95% CI {_pct(ci[0])} to {_pct(ci[1])}."
         )
     else:
-        lines.append("- Highest overall reliability: insufficient data.")
+        lines.append("- Highest string-format reliability: insufficient data.")
     for item in recommendations.get("significance_tests") or []:
         comparator = item["right_format"] if item["left_format"] == best_format else item["left_format"]
         lines.append(
@@ -764,6 +772,11 @@ def _render_summary(
             + "."
         )
     lines.append(f"- System-prompt recommendation: {recommendations['system_prompt_recommendation']}")
+    lines.append("- `unix_epoch` is analyzed separately from string formats for default-format recommendations.")
+    lines.append(
+        "- Reasoning vs non-reasoning summaries reflect the configured production request shapes "
+        "(temperature 1.0 vs 0.0), not an isolated causal reasoning estimate."
+    )
     for item in recommendations.get("format_error_rows") or []:
         error_summary = ", ".join(f"{name} ({count})" for name, count in item["top_errors"])
         lines.append(f"- Common `{item['format']}` error modes: {error_summary}.")

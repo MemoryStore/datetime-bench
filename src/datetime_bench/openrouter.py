@@ -14,9 +14,10 @@ from .config import (
     API_TIMEOUT_SECONDS,
     MAX_COMPLETION_TOKENS,
     MODEL_CELLS,
+    NON_REASONING_TEMPERATURE,
+    REASONING_TEMPERATURE,
     REQUEST_RETRIES,
     SYSTEM_PROMPT,
-    TEMPERATURE,
 )
 from .types import PromptCase, SelectedModel
 
@@ -137,7 +138,7 @@ class OpenRouterClient:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": case.prompt},
             ],
-            "temperature": 1.0 if model.reasoning_mode == "reasoning" else TEMPERATURE,
+            "temperature": request_temperature_for_model(model),
             "max_tokens": self.max_tokens,
         }
         if model.reasoning_config is not None:
@@ -199,6 +200,18 @@ class OpenRouterClient:
             pricing=pricing,
             notes=list(base.notes),
         )
+
+
+def request_temperature_for_model(model: SelectedModel) -> float:
+    return REASONING_TEMPERATURE if model.reasoning_mode == "reasoning" else NON_REASONING_TEMPERATURE
+
+
+def reasoning_control_mode(model: SelectedModel) -> str:
+    if model.reasoning_mode == "reasoning":
+        return "explicit_reasoning"
+    if model.reasoning_config is None:
+        return "omitted_provider_default"
+    return "explicit_disabled"
 
 
 def normalize_reasoning_config(
