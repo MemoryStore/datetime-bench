@@ -6,9 +6,10 @@ from __future__ import annotations
 import random
 from datetime import timedelta
 
-from ..formats import build_datetime, describe_datetime, random_datetime
+from ..formats import build_datetime, random_datetime
 from ..types import TaskScenario
 from .base import FORMAT_KEYS, base_gold_map
+from .variants import describe_datetime_variant, normalize_timezone_for_representation, variant_for_index
 
 
 TASK_TYPE = "temporal_arithmetic"
@@ -56,17 +57,28 @@ def generate(n: int = 20, seed: int = 42) -> list[TaskScenario]:
     tasks: list[TaskScenario] = []
     presets = list(DST_CASES)
     for index in range(1, n + 1):
+        input_style, timezone_representation = variant_for_index(index)
+        if input_style in {"prose_messy", "ambiguous_but_resolved"}:
+            input_style = "compact_structured" if index % 2 == 0 else "canonical_text"
         if presets:
             base, amount, unit, tag = presets.pop(0)
+            input_style = "canonical_text"
+            timezone_representation = "iana_zone"
         else:
-            base = random_datetime(rng)
+            base = normalize_timezone_for_representation(random_datetime(rng), timezone_representation)
             unit = rng.choice(["hours", "days", "weeks"])
             amount = rng.randint(1, 90)
             tag = "random"
         gold = _apply_delta(base, amount, unit)
+        base_description = describe_datetime_variant(
+            base,
+            input_style,
+            timezone_representation,
+            assume_mdy=index % 2 == 1,
+        )
         instruction = (
             f"What is the date and time exactly {amount} {unit} after "
-            f"{describe_datetime(base)}? Output in {{FORMAT}}."
+            f"{base_description}? Output in {{FORMAT}}."
         )
         instruction_by_format = {
             format_key: instruction.replace("{FORMAT}", format_key.replace("_", " "))
@@ -84,6 +96,8 @@ def generate(n: int = 20, seed: int = 42) -> list[TaskScenario]:
                     "amount": amount,
                     "unit": unit,
                     "case_tag": tag,
+                    "input_style": input_style,
+                    "timezone_representation": timezone_representation,
                 },
             )
         )

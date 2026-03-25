@@ -19,7 +19,7 @@ TASKS_PER_TYPE_MAP: dict[str, int] = {
     "format_conversion": 35,
     "extraction_from_passage": 30,
     "edge_cases": 35,
-    "multiple_choice_validation": 25,
+    "parsing_normalization": 25,
 }
 SEMANTIC_THRESHOLDS_SECONDS: dict[str, float] = {
     "default": 0.0,
@@ -38,8 +38,8 @@ CELL_PARALLELISM = 12
 SOFT_BUDGET_CAP_USD = 250.0
 HARD_BUDGET_CAP_USD = 300.0
 TASKS_FILENAME = f"tasks_seed{SEED}.json"
-BENCH_VERSION = "v0.2"
-PREVIOUS_BENCH_VERSION = "v0.1.5"
+BENCH_VERSION = "v0.3"
+PREVIOUS_BENCH_VERSION = "v0.2"
 
 SYSTEM_PROMPT = (
     "You are a datetime formatting assistant. You will be given a task involving\n"
@@ -136,12 +136,12 @@ class ModelCell:
     reasoning_config: dict[str, Any] | None = None
 
 
-# AI-ANCHOR: datetime-bench v0.2: 24-cell model matrix
-# 3 frontier families × 3 sizes × 2 reasoning modes + 6 open-source cells.
-# Enables within-family size comparison, cross-family comparison at each size,
-# and reasoning effect isolation. Cells where the primary model fails probe
-# are skipped (not substituted from another family).
-# Reasoning cells are intentional controls for expensive numeric workloads (especially unix_epoch).
+# AI-ANCHOR: datetime-bench v0.3: 24-cell model matrix
+# Frontier families keep the v0.2 size/reasoning comparisons, while the
+# open-source slice stays intentionally smaller for cost and signal. Cells
+# where the primary model fails probe are skipped (not substituted from
+# another family). Reasoning cells remain intentional controls for expensive
+# numeric workloads (especially unix_epoch).
 MODEL_CELLS: tuple[ModelCell, ...] = (
     # --- Google: small / medium / large × non-reasoning / reasoning ---
     ModelCell(
@@ -342,17 +342,6 @@ MODEL_CELLS: tuple[ModelCell, ...] = (
             "qwen/qwen-3.5-9b",
         ),
         reasoning_config={"enabled": False},
-    ),
-    ModelCell(
-        cell="qwen_small_r",
-        label="Qwen 3.5 9B, reasoning",
-        reasoning_mode="reasoning",
-        size="small",
-        candidates=(
-            "qwen/qwen3.5-9b",
-            "qwen/qwen-3.5-9b",
-        ),
-        reasoning_config={"effort": "low", "exclude": True},
     ),
     ModelCell(
         cell="qwen_large_nr",

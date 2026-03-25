@@ -48,6 +48,8 @@ This benchmark measures which datetime output format LLMs generate most reliably
 
 ## What the benchmark tests
 
+The table below describes the published `v0.2` run. The `v0.3` code path replaces `multiple_choice_validation` with a `parsing_normalization` family while keeping the same total scenario count.
+
 **Seven task types**, each probing a different datetime skill:
 
 | Task | Count | Description |
@@ -94,7 +96,7 @@ Each model receives a zero-shot system prompt:
 
 > You are a datetime formatting assistant. You will be given a task involving dates and times. Respond with ONLY the requested output — no explanation, no prose, no markdown formatting, no quotes. Just the datetime string (or the letter for multiple choice questions).
 
-Temperature is 0.0. Max completion tokens is 2,500. Each task specifies the target format and includes an example of the expected pattern.
+Temperature is 0.0 for non-reasoning cells and 1.0 for reasoning cells. Max completion tokens is 2,500. Each task specifies the target format and includes an example of the expected pattern.
 
 **Scoring** evaluates six dimensions per response:
 
@@ -215,9 +217,9 @@ Cumulative spend across all versions: ~$171.
 
 The accuracy drop from v0.1.5 (~93%) to v0.2 (~87%) is not a regression. The 6-cell matrix over-represented strong models. The 24-cell matrix includes weaker models (Qwen 3.5-9B, GLM-5 without reasoning) that pull the average down.
 
-## Planned work
+## Roadmap
 
-**v0.3** — Input diversity and parsing. Test whether format reliability holds when inputs vary: different timezone representations, ambiguous natural-language dates, non-English month names. Add a parsing direction — given a formatted string, extract the datetime.
+**v0.3** — Input diversity and parsing. Replace multiple choice with a parsing/normalization family, test different timezone representations and ambiguous-but-resolved natural-language dates, and keep `unix_epoch` in the benchmark while reporting it separately from the main string-format recommendation surface.
 
 **v0.4** — Temporal reasoning depth. Expand multi-hop chains, add calendar arithmetic edge cases (e.g., "the third Thursday in November 2028"), test duration formatting.
 

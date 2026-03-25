@@ -13,7 +13,7 @@ from . import (
     extraction,
     format_conversion,
     multi_hop,
-    multiple_choice,
+    parsing_normalization,
     temporal_arithmetic,
 )
 from .base import expand_scenarios, read_tasks, shuffle_cases, write_tasks
@@ -25,7 +25,7 @@ TASK_GENERATORS = (
     (format_conversion.TASK_TYPE, format_conversion.generate),
     (extraction.TASK_TYPE, extraction.generate),
     (edge_cases.TASK_TYPE, edge_cases.generate),
-    (multiple_choice.TASK_TYPE, multiple_choice.generate),
+    (parsing_normalization.TASK_TYPE, parsing_normalization.generate),
 )
 
 

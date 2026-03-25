@@ -40,6 +40,9 @@ def generate(n: int = 20, seed: int = 42) -> list[TaskScenario]:
                 instruction_by_format=instruction_by_format,
                 gold_formatted_by_format=base_gold_map(gold),
                 format_metadata=format_metadata,
+                metadata={
+                    "input_style": "compact_structured",
+                },
             )
         )
     return tasks

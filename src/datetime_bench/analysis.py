@@ -92,6 +92,8 @@ def run_analysis(
     primary_results_csv = output_dir / PRIMARY_RESULTS_CSV.name
     format_comparison_csv = output_dir / FORMAT_COMPARISON_CSV.name
     format_comparison_string_only_csv = output_dir / "format_comparison_string_only.csv"
+    epoch_summary_csv = output_dir / "epoch_summary.csv"
+    input_variant_summary_csv = output_dir / "input_variant_summary.csv"
     error_taxonomy_csv = output_dir / ERROR_TAXONOMY_CSV.name
     cost_report_csv = output_dir / COST_REPORT_CSV.name
     summary_md_path = output_dir / SUMMARY_MD.name
@@ -108,6 +110,12 @@ def run_analysis(
     string_only_rows = [row for row in rows if row.get("format") != "unix_epoch"]
     string_only_format_rows = _format_comparison(string_only_rows)
     write_csv(format_comparison_string_only_csv, string_only_format_rows)
+
+    epoch_rows = _epoch_summary(rows)
+    write_csv(epoch_summary_csv, epoch_rows)
+
+    input_variant_rows = _input_variant_summary(rows)
+    write_csv(input_variant_summary_csv, input_variant_rows)
 
     error_rows = _error_taxonomy(rows)
     write_csv(error_taxonomy_csv, error_rows)
@@ -154,6 +162,8 @@ def run_analysis(
         "primary_results_csv": str(primary_results_csv),
         "format_comparison_csv": str(format_comparison_csv),
         "format_comparison_string_only_csv": str(format_comparison_string_only_csv),
+        "epoch_summary_csv": str(epoch_summary_csv),
+        "input_variant_summary_csv": str(input_variant_summary_csv),
         "error_taxonomy_csv": str(error_taxonomy_csv),
         "cost_report_csv": str(cost_report_csv),
         "summary_md": str(summary_md_path),
@@ -345,6 +355,59 @@ def _format_error_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             {
                 "format": format_key,
                 "top_errors": top_errors,
+            }
+        )
+    return out
+
+
+def _epoch_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    epoch_rows = [row for row in rows if row.get("format") == "unix_epoch"]
+    if not epoch_rows:
+        return []
+    out = [
+        {
+            "category": "overall",
+            "name": "unix_epoch",
+            "n": len(epoch_rows),
+            "accuracy": round(sum(bool(row.get("semantic_correct")) for row in epoch_rows) / len(epoch_rows), 6),
+            "strict_accuracy": round(sum(bool(row.get("strict_correct")) for row in epoch_rows) / len(epoch_rows), 6),
+        }
+    ]
+    grouped = defaultdict(list)
+    for row in epoch_rows:
+        grouped[row["task_type"]].append(row)
+    for task_type, items in sorted(grouped.items()):
+        out.append(
+            {
+                "category": "task_type",
+                "name": task_type,
+                "n": len(items),
+                "accuracy": round(sum(bool(row.get("semantic_correct")) for row in items) / len(items), 6),
+                "strict_accuracy": round(sum(bool(row.get("strict_correct")) for row in items) / len(items), 6),
+            }
+        )
+    return out
+
+
+def _input_variant_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    grouped = defaultdict(lambda: [0, 0])
+    for row in rows:
+        input_style = row.get("input_style")
+        timezone_representation = row.get("timezone_representation")
+        if not input_style or not timezone_representation:
+            continue
+        key = (row["format"], input_style, timezone_representation)
+        grouped[key][0] += 1
+        grouped[key][1] += 1 if row.get("semantic_correct") else 0
+    out = []
+    for (format_key, input_style, timezone_representation), (total, correct) in sorted(grouped.items()):
+        out.append(
+            {
+                "format": format_key,
+                "input_style": input_style,
+                "timezone_representation": timezone_representation,
+                "n": total,
+                "accuracy": round(correct / total, 6) if total else 0.0,
             }
         )
     return out
@@ -772,6 +835,7 @@ def _render_summary(
             + "."
         )
     lines.append(f"- System-prompt recommendation: {recommendations['system_prompt_recommendation']}")
+    lines.append("- Main recommendation surface: string formats only. `unix_epoch` is reported separately.")
     lines.append("- `unix_epoch` is analyzed separately from string formats for default-format recommendations.")
     lines.append(
         "- Reasoning vs non-reasoning summaries reflect the configured production request shapes "

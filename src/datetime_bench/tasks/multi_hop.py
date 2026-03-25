@@ -113,7 +113,11 @@ def generate(n: int = 20, seed: int = 42) -> list[TaskScenario]:
                 gold_datetime=gold,
                 instruction_by_format=instruction_by_format,
                 gold_formatted_by_format=base_gold_map(gold),
-                metadata={"reasoning_steps": steps},
+                metadata={
+                    "reasoning_steps": steps,
+                    "input_style": "canonical_text",
+                    "timezone_representation": "iana_zone",
+                },
             )
         )
     return tasks
