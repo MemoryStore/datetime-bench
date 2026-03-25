@@ -1,0 +1,9 @@
+accuracy,category,n,name,strict_accuracy
+0.508511,overall,5170,unix_epoch,0.508511
+0.602597,task_type,770,direct_generation,0.602597
+0.485714,task_type,770,edge_cases,0.485714
+0.466667,task_type,660,extraction_from_passage,0.466667
+0.571429,task_type,770,format_conversion,0.571429
+0.450649,task_type,770,multi_hop_reasoning,0.450649
+0.616364,task_type,550,parsing_normalization,0.616364
+0.405682,task_type,880,temporal_arithmetic,0.405682
