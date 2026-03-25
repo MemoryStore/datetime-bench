@@ -91,6 +91,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 async def main_async(args: argparse.Namespace) -> int:
+    # End-to-end path: layout setup -> model selection/probe -> execution -> optional analysis.
     layout = resolve_layout(
         run_root=args.run_root,
         report_dir=args.report_dir,
@@ -330,6 +331,9 @@ async def execute_benchmark(
     seed: int,
     resume: bool,
 ) -> dict[str, Any]:
+    # Budget behavior:
+    # - soft cap: mark remaining cells to skip but let completed cells finish
+    # - hard cap: abort all remaining cells immediately.
     # One rate limiter per provider to respect per-provider limits
     provider_limiters: dict[str, RateLimiter] = {}
     ordered_models = sorted(
@@ -416,6 +420,8 @@ async def run_model_cases(
     budget: BudgetTracker,
     rate_limiter: RateLimiter,
 ) -> None:
+    # Per-cell worker pool: each case is pulled from a shared queue and executed independently
+    # while preserving model/task ordering only within the cell.
     queue: asyncio.Queue[PromptCase] = asyncio.Queue()
     for case in cases:
         queue.put_nowait(case)
@@ -458,6 +464,8 @@ async def execute_case(
     case: PromptCase,
     rate_limiter: RateLimiter,
 ) -> dict[str, Any]:
+    # Execution contract: return a fully shaped result row even when parsing or scoring fails.
+    # This keeps downstream aggregation resilient to model/API exceptions.
     started = time.perf_counter()
     try:
         await rate_limiter.wait()

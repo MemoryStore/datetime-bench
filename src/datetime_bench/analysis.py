@@ -80,6 +80,12 @@ def run_analysis(
     selections = selections if selections is not None else load_selections()
     run_summary = run_summary if run_summary is not None else load_run_summary()
     run_manifest = run_manifest if run_manifest is not None else load_run_manifest()
+    if not rows:
+        msg = (
+            f"No result rows found in {results_dir}. "
+            "Refusing to regenerate reports from an empty or missing run directory."
+        )
+        raise RuntimeError(msg)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     raw_results_csv = output_dir / RAW_RESULTS_CSV.name
@@ -104,8 +110,8 @@ def run_analysis(
     cost_rows = _cost_report(rows, selections, run_summary)
     write_csv(cost_report_csv, cost_rows)
 
-    mode_rows = _mode_format_summary(rows)
-    size_rows = _size_format_summary(rows)
+    mode_rows = _mode_format_summary(rows, selections)
+    size_rows = _size_format_summary(rows, selections)
     task_sensitivity_rows = _task_sensitivity(rows)
     format_error_rows = _format_error_summary(rows)
     stats = _pairwise_format_tests(rows)
@@ -230,10 +236,14 @@ def _error_taxonomy(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def _mode_format_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _mode_format_summary(
+    rows: list[dict[str, Any]],
+    selections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     grouped = defaultdict(lambda: [0, 0, 0])
+    mode_by_cell, _ = _selection_maps(selections)
     for row in rows:
-        key = (_cell_mode(row["model_cell"]), row["format"])
+        key = (_cell_mode(row["model_cell"], mode_by_cell), row["format"])
         grouped[key][0] += 1
         grouped[key][1] += 1 if row.get("semantic_correct") else 0
         grouped[key][2] += 1 if row.get("strict_correct") else 0
@@ -253,10 +263,14 @@ def _mode_format_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def _size_format_summary(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _size_format_summary(
+    rows: list[dict[str, Any]],
+    selections: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     grouped = defaultdict(lambda: [0, 0, 0])
+    _, size_by_cell = _selection_maps(selections)
     for row in rows:
-        key = (_cell_size(row["model_cell"]), row["format"])
+        key = (_cell_size(row["model_cell"], size_by_cell), row["format"])
         grouped[key][0] += 1
         grouped[key][1] += 1 if row.get("semantic_correct") else 0
         grouped[key][2] += 1 if row.get("strict_correct") else 0
@@ -448,6 +462,7 @@ def _recommendations(
 ) -> dict[str, Any]:
     ranked = sorted(format_rows, key=lambda row: row.get("overall_accuracy") or 0.0, reverse=True)
     best = ranked[0] if ranked else None
+    rfc_3339 = next((row for row in format_rows if row["format"] == "rfc_3339"), None)
     tests_for_best = [
         item for item in stats if best and best["format"] in {item["left_format"], item["right_format"]}
     ]
@@ -481,11 +496,23 @@ def _recommendations(
             }
         )
     total_cost = next((row["cost_usd"] for row in cost_rows if row["category"] == "total"), 0.0)
-    system_prompt_recommendation = (
-        "Use `ISO 8601` for system-prompted timestamp generation when you want the best first-attempt reliability."
-        if best and best["format"] == "iso_8601"
-        else "Use the top-ranked format from the benchmark for system-prompted timestamp generation."
-    )
+    if (
+        best
+        and rfc_3339
+        and best["format"] in {"iso_8601", "rfc_3339", "python_datetime"}
+        and (
+            best["format"] == "rfc_3339"
+            or _is_statistically_tied(best["format"], "rfc_3339", stats)
+        )
+    ):
+        system_prompt_recommendation = (
+            "Use `RFC 3339` as the default machine-facing timestamp format. "
+            "It is statistically tied with the top cluster and names an unambiguous spec."
+        )
+    else:
+        system_prompt_recommendation = (
+            "Use the top-ranked format from the benchmark for system-prompted timestamp generation."
+        )
     return {
         "best_format": best["format"] if best else None,
         "best_accuracy": best.get("overall_accuracy") if best else None,
@@ -517,6 +544,40 @@ def _wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float
         / denominator
     )
     return max(0.0, center - margin), min(1.0, center + margin)
+
+
+def _selection_maps(
+    selections: list[dict[str, Any]],
+) -> tuple[dict[str, str], dict[str, str]]:
+    mode_by_cell: dict[str, str] = {}
+    size_by_cell: dict[str, str] = {}
+    for item in selections:
+        cell = str(item.get("cell") or "")
+        if not cell:
+            continue
+        mode = item.get("reasoning_mode")
+        size = item.get("size")
+        if isinstance(mode, str) and mode:
+            mode_by_cell[cell] = mode
+        if isinstance(size, str) and size:
+            size_by_cell[cell] = size
+    return mode_by_cell, size_by_cell
+
+
+def _is_statistically_tied(left: str, right: str, stats: list[dict[str, Any]], alpha: float = 0.05) -> bool:
+    if left == right:
+        return True
+    match = next(
+        (
+            item
+            for item in stats
+            if {item["left_format"], item["right_format"]} == {left, right}
+        ),
+        None,
+    )
+    if match is None:
+        return False
+    return float(match["p_value"]) >= alpha
 
 
 def _render_summary(
@@ -736,9 +797,24 @@ def _pct(value: float | None) -> str:
     return f"{value * 100:.2f}%"
 
 
-def _cell_mode(model_cell: str) -> str:
-    return "non_reasoning" if "non_reasoning" in model_cell else "reasoning"
+def _cell_mode(model_cell: str, mode_by_cell: dict[str, str] | None = None) -> str:
+    if mode_by_cell and model_cell in mode_by_cell:
+        return mode_by_cell[model_cell]
+    tokens = model_cell.split("_")
+    if "nr" in tokens:
+        return "non_reasoning"
+    if "r" in tokens:
+        return "reasoning"
+    return "unknown"
 
 
-def _cell_size(model_cell: str) -> str:
-    return model_cell.split("_", 1)[0]
+def _cell_size(model_cell: str, size_by_cell: dict[str, str] | None = None) -> str:
+    if size_by_cell and model_cell in size_by_cell:
+        return size_by_cell[model_cell]
+    tokens = model_cell.split("_")
+    for token in tokens:
+        if token == "med":
+            return "medium"
+        if token in {"small", "medium", "large"}:
+            return token
+    return "unknown"

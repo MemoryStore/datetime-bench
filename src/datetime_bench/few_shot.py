@@ -154,6 +154,8 @@ async def _run_extension(
     seed: int,
     resume: bool,
 ) -> None:
+    # Extension flow is intentionally selective: only target formats are rewritten
+    # with few-shot exemplars, keeping comparisons focused on weakest baseline formats.
     ordered_models = sorted(selections, key=lambda item: item.estimated_unit_cost())
     rate_limiter = RateLimiter(REQUEST_DELAY_SECONDS)
     for index, selection in enumerate(ordered_models, start=1):
@@ -185,6 +187,7 @@ async def _run_extension(
 
 
 def _lowest_performing_formats(rows: list[dict[str, Any]]) -> list[str]:
+    # Target format selection matches the benchmark metric: semantic correctness rate.
     grouped = defaultdict(lambda: [0, 0])
     for row in rows:
         grouped[row["format"]][0] += 1

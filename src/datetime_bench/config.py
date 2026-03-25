@@ -11,6 +11,7 @@ from .layout import make_layout
 
 SEED = 42
 TASKS_PER_TYPE = 20
+# Reported counts are overridden by TASKS_PER_TYPE_MAP for v0.2 and align with README.
 TASKS_PER_TYPE_MAP: dict[str, int] = {
     "direct_generation": 35,
     "temporal_arithmetic": 40,
@@ -138,6 +139,7 @@ class ModelCell:
 # Enables within-family size comparison, cross-family comparison at each size,
 # and reasoning effect isolation. Cells where the primary model fails probe
 # are skipped (not substituted from another family).
+# Reasoning cells are intentional controls for expensive numeric workloads (especially unix_epoch).
 MODEL_CELLS: tuple[ModelCell, ...] = (
     # --- Google: small / medium / large × non-reasoning / reasoning ---
     ModelCell(
