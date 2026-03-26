@@ -210,6 +210,7 @@ Current v0.3 report artifacts:
 - [epoch_summary.csv](reports/datetime_bench_v0.3/epoch_summary.csv)
 - [input_variant_summary.csv](reports/datetime_bench_v0.3/input_variant_summary.csv)
 - [cost_report.csv](reports/datetime_bench_v0.3/cost_report.csv)
+- [results_all.csv](reports/datetime_bench_v0.3/results_all.csv) — full row-level results for every model × format × scenario
 
 > [!IMPORTANT]
 > The checked-in `reports/` directory is a publication snapshot. The run artifacts and generated CSVs for `v0.3` are included in this checkout, but earlier historical runs are not all present in raw form.
@@ -259,3 +260,99 @@ reports/
   datetime_bench_v0.2/
   datetime_bench_v0.3/
 ```
+
+## Example: what a single test case looks like
+
+Each scenario has a gold datetime, a task prompt, and a target format. The benchmark asks the model to emit the timestamp and then scores the response.
+
+**Scenario:** `direct_gen_013` — emit a specific datetime in `iso_8601` format
+
+```
+Prompt (simplified):
+  "Express the following datetime in iso_8601 format:
+   July 14, 2020 at 8:10 AM, US Central time (CDT, UTC-5)"
+
+Gold answer:    2020-07-14T08:10:00-05:00
+Model output:   2020-07-14T08:10:00-05:00
+Delta:          0.0 seconds
+Semantic:       ✓ correct
+Strict:         ✓ correct
+```
+
+**Same scenario, same model, but in `unix_epoch` format:**
+
+```
+Gold answer:    1594728600
+Model output:   1594710600
+Delta:          18000.0 seconds (5 hours off)
+Semantic:       ✗ incorrect
+Strict:         ✗ incorrect
+```
+
+The model got the string format right and the epoch wrong — for the exact same datetime. This is the core finding: format choice changes reliability even when the underlying task is identical.
+
+## How scoring works
+
+Each response is scored on three levels:
+
+1. **Syntactic validity** — does the output parse as a valid instance of the requested format? A `rfc_3339` response must match the RFC 3339 grammar. A `unix_epoch` response must be a valid integer or float.
+
+2. **Semantic correctness** — does the parsed datetime match the gold answer within a tolerance? The parsed output and the gold datetime are both converted to UTC, and the absolute delta in seconds is computed. The threshold varies by task type (tighter for direct generation, slightly looser for multi-hop reasoning).
+
+3. **Strict correctness** — is the delta exactly zero seconds *and* was the output parsed in strict mode (no fallback parsing)? For weekday-bearing formats (`rfc_2822`, `javascript_date`, `natural_language`), the weekday must also be calendar-consistent.
+
+The headline "accuracy" number in the results table is **semantic correctness**. The "strict" column is the stricter measure. When the two diverge (e.g., `rfc_2822` at 84.35% semantic vs. 80.35% strict), the gap is usually caused by weekday errors or minor formatting deviations that fallback parsing can recover from.
+
+## Format accuracy
+
+```
+rfc_3339          ██████████████████████████████████████████████████████████  88.24%
+iso_8601          █████████████████████████████████████████████████████████▉  88.10%
+python_datetime   █████████████████████████████████████████████████████████▌  87.64%
+rfc_2822          ██████████████████████████████████████████████████████▊     84.35%
+javascript_date   █████████████████████████████████████████████████████       78.12%
+natural_language  ████████████████████████████████████████████████████        76.31%
+unix_epoch        █████████████████████████████████▍                         50.85%
+```
+
+## Related work
+
+datetime-bench focuses on a specific question: which output format do LLMs produce most reliably? Several adjacent benchmarks exist, but none directly address format-level generation reliability.
+
+**Closest work:**
+
+- [DATETIME](https://arxiv.org/abs/2504.16155) (Gaere & Wangenheim, 2025) — benchmarks LLM datetime translation to ISO 8601 and datetime arithmetic across 58 models. Focuses on translation accuracy, not on comparing reliability across output formats.
+- [DateLogicQA](https://arxiv.org/abs/2412.13377) (NAACL 2025 SRW) — tests how date format affects LLM *comprehension* (input side). Finds format matters for understanding, which is complementary to our finding that format matters for generation (output side).
+
+**Temporal reasoning benchmarks (different focus):**
+
+- [TimeBench](https://aclanthology.org/2024.acl-long.66.pdf) (ACL 2024) — 10 temporal reasoning datasets covering event ordering, duration QA, and temporal NLI
+- [TRAM](https://aclanthology.org/2024.findings-acl.382/) (ACL 2024) — 526K temporal reasoning MCQs
+- [Test of Time](https://arxiv.org/abs/2406.09170) (2024) — temporal semantics and arithmetic
+
+These benchmarks test whether LLMs *understand* time. datetime-bench tests whether they can *output* correctly formatted timestamps — a different, more mechanical question, but one with direct production impact.
+
+## Contributing
+
+Contributions are welcome. The most useful additions are:
+
+**Add a model.** Edit the `MODEL_CELLS` list in `src/datetime_bench/config.py` with the new model's OpenRouter identifier. Run the benchmark with `--dry-run` first to verify the model resolves and responds to the probe.
+
+**Add an output format.** Add a new `FormatSpec` entry in the format configuration, implement a parser in `src/datetime_bench/evaluation/parsers.py`, and wire it into the scoring dispatch in `src/datetime_bench/evaluation/scoring.py`.
+
+**Add a task family.** Create a new task generator in `src/datetime_bench/tasks/`, register it in the task loader, and add a semantic threshold in `config.py` if the task type warrants a different tolerance.
+
+**Report an issue with scoring.** If you find a case where the evaluation is wrong (e.g., a correct response scored as incorrect, or vice versa), open an issue with the `case_id`, model, and expected vs. actual score.
+
+To run locally:
+
+```bash
+uv sync
+export OPENROUTER_API_KEY="sk-or-..."
+datetime-bench --dry-run   # verify setup
+datetime-bench             # full run
+```
+
+## License
+
+[MIT](LICENSE)
