@@ -8,32 +8,19 @@ Benchmark for measuring how reliably LLMs generate datetime values across common
 ## tl;dr
 
 > [!TIP]
-> If you ask an LLM to emit a machine-facing timestamp, use `rfc_3339`.
+> If you ask an LLM to emit or parse timestamp, use **RFC 3339** ( e.g. `2024-03-26 10:30:00-05:00` ).
 
-- Default: `rfc_3339`
-- Effectively tied on measured accuracy: `iso_8601`
+- If you need an LLM to parse OR emit a timestamp, use rfc_3339 or python date formats.
+- Do NOT use `unix epoch` or `javascript date` formats.
+- Smaller models and non-reasoning models still make a LOT of mistakes in time parsing / formatting.
 - Fine for Python-only systems: `python_datetime`
-- Avoid as machine-facing defaults: `javascript_date`, `natural_language`
-- Do not ask the model for `unix_epoch` unless you must; emit a string timestamp and convert to epoch in code
+- If you really need `unix_epoch`, emit a timestamp in one of the above formats, and convert to epoch in code
 
-`v0.3` confirms the same practical story as earlier versions, but under a more realistic benchmark shape: input diversity and parsing / normalization did not change the top recommendation. The best string formats are still a tight cluster, and `unix_epoch` is still much worse than every string format.
+![Datetime output reliability by format](reports/datetime_bench_v0.3/figures/format_accuracy.png)
 
 ## Why This Benchmark Exists
 
 LLM applications routinely turn relative or natural-language datetime mentions into grounded timestamps: "last Tuesday", "three hours ago", "the meeting after lunch". The output format matters because downstream code has to parse it reliably. A format that models generate incorrectly 10% of the time means 10% of timestamps are silently wrong before your application even starts validating business logic.
-
-## Quick Look
-
-`v0.3` is the current publication snapshot.
-
-- `22` active model cells across Google, Anthropic, OpenAI, Qwen, and GLM
-- `2` probe-skipped cells: `qwen_large_r`, `glm_med_r`
-- `235` scenarios
-- `7` output formats
-- `36,190` stored result rows
-- `$120.64` total spend
-
-![Datetime output reliability by format](reports/datetime_bench_v0.3/figures/format_accuracy.png)
 
 ### Headline Format Results
 
