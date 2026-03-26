@@ -261,35 +261,69 @@ reports/
   datetime_bench_v0.3/
 ```
 
-## Example: what a single test case looks like
+## What the model actually has to do
 
-Each scenario has a gold datetime, a task prompt, and a target format. The benchmark asks the model to emit the timestamp and then scores the response.
+These are not simple format conversion tests. The benchmark requires the model to do real reasoning — temporal arithmetic, multi-step chaining, and edge case handling — then produce the answer in a specific format. The format is the variable; the underlying task stays the same.
 
-**Scenario:** `direct_gen_013` — emit a specific datetime in `iso_8601` format
-
-```
-Prompt (simplified):
-  "Express the following datetime in iso_8601 format:
-   July 14, 2020 at 8:10 AM, US Central time (CDT, UTC-5)"
-
-Gold answer:    2020-07-14T08:10:00-05:00
-Model output:   2020-07-14T08:10:00-05:00
-Delta:          0.0 seconds
-Semantic:       ✓ correct
-Strict:         ✓ correct
-```
-
-**Same scenario, same model, but in `unix_epoch` format:**
+**Direct generation** — convert a datetime to a target format:
 
 ```
-Gold answer:    1594728600
-Model output:   1594710600
-Delta:          18000.0 seconds (5 hours off)
-Semantic:       ✗ incorrect
-Strict:         ✗ incorrect
+Prompt:  "Convert the following datetime to rfc 3339:
+          July 14, 2020 at 8:10 AM, US Central time (CDT, UTC-5)"
+
+Answer:  2020-07-14T08:10:00-05:00
 ```
 
-The model got the string format right and the epoch wrong — for the exact same datetime. This is the core finding: format choice changes reliability even when the underlying task is identical.
+**Temporal arithmetic** — the model has to do math:
+
+```
+Prompt:  "What is the date and time exactly 47 days after
+          March 9, 2028 at 3:00 PM UTC? Output in rfc 3339."
+
+Answer:  2028-04-25T15:00:00+00:00
+```
+
+**Multi-hop reasoning** — chained steps:
+
+```
+Prompt:  "A server was deployed on January 15, 2027 at 9:00 AM UTC.
+          Its SSL certificate expires exactly 90 days later.
+          A renewal reminder should fire 7 days before expiry
+          at the same local time.
+          When does the reminder fire? Output in rfc 3339."
+
+Answer:  2027-04-08T09:00:00+00:00
+         (deploy + 90 days = April 15, minus 7 days = April 8)
+```
+
+**DST edge cases** — tricky timezone transitions:
+
+```
+Prompt:  "What time is it 2 hours after March 9, 2025 at 1:30 AM
+          in timezone America/New_York? Output in rfc 3339."
+
+Answer:  2025-03-09T04:30:00-04:00
+         (clocks spring forward at 2:00 AM, so 1:30 + 2h = 4:30, not 3:30)
+```
+
+**Extraction from passage** — find the right datetime buried in text:
+
+```
+Prompt:  "Read the following passage and extract the meeting date.
+          Output in rfc 3339.
+
+          Priya, the VP of Operations, circulated a note to 17 attendees
+          about the upcoming review. The final agenda was locked on
+          March 12, 2029 at 5:25 PM +11:00. A separate travel hold
+          remains in place until June 3, 2031 at 10:15 AM +11:00.
+          The discussion will cover risk review and compliance,
+          and room 204 has already been reserved."
+
+Answer:  2029-03-12T17:25:00+11:00
+         (must pick the meeting date, not the distractor)
+```
+
+Each of these is tested across all 7 output formats, across 22 models. The same prompt, the same expected answer — only the format changes. That is how we isolate format reliability from task difficulty.
 
 ## How scoring works
 
