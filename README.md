@@ -18,6 +18,10 @@ Benchmark for measuring how reliably LLMs generate datetime values across common
 
 `v0.3` confirms the same practical story as earlier versions, but under a more realistic benchmark shape: input diversity and parsing / normalization did not change the top recommendation. The best string formats are still a tight cluster, and `unix_epoch` is still much worse than every string format.
 
+## Why This Benchmark Exists
+
+LLM applications routinely turn relative or natural-language datetime mentions into grounded timestamps: "last Tuesday", "three hours ago", "the meeting after lunch". The output format matters because downstream code has to parse it reliably. A format that models generate incorrectly 10% of the time means 10% of timestamps are silently wrong before your application even starts validating business logic.
+
 ## Quick Look
 
 `v0.3` is the current publication snapshot.
@@ -30,6 +34,18 @@ Benchmark for measuring how reliably LLMs generate datetime values across common
 - `$120.64` total spend
 
 ![Datetime output reliability by format](reports/datetime_bench_v0.3/figures/format_accuracy.png)
+
+### Headline Format Results
+
+| Format | Accuracy | Strict | 95% CI |
+| --- | --- | --- | --- |
+| `rfc_3339` | `88.24%` | `88.24%` | `87.33-89.09%` |
+| `iso_8601` | `88.10%` | `88.10%` | `87.19-88.96%` |
+| `python_datetime` | `87.64%` | `87.64%` | `86.72-88.51%` |
+| `rfc_2822` | `84.35%` | `80.35%` | `83.34-85.32%` |
+| `javascript_date` | `78.12%` | `73.83%` | `76.98-79.23%` |
+| `natural_language` | `76.31%` | `71.61%` | `75.13-77.44%` |
+| `unix_epoch` | `50.85%` | `50.85%` | `49.49-52.21%` |
 
 ![Timezone wording changes accuracy even for the best formats](reports/datetime_bench_v0.3/figures/timezone_impact_top3.png)
 
@@ -124,6 +140,16 @@ Practical advice:
 - prefer `UTC`, `Z`, or explicit numeric offsets in prompts and intermediate representations
 - normalize timezone abbreviations like `EST`, `PDT`, or `GMT+0000` before the final formatting request
 - keep compact structured intermediate forms when possible; they are safer than free-form restatements
+
+The ugliest source slice in `v0.3` was canonical text paired with timezone abbreviations:
+
+| Format | `canonical_text + abbr_or_gmt` |
+| --- | --- |
+| `rfc_3339` | `59.60%` |
+| `iso_8601` | `60.10%` |
+| `python_datetime` | `55.56%` |
+
+That is the strongest practical reason to normalize timezone wording before the final formatting step.
 
 Observed reasoning-vs-non-reasoning uplift for the top formats:
 
@@ -242,6 +268,7 @@ Prompt:  "A server was deployed on January 15, 2027 at 9:00 AM UTC.
           When does the reminder fire? Output in rfc 3339."
 
 Answer:  2027-04-08T09:00:00+00:00
+         (deploy + 90 days = April 15, minus 7 days = April 8)
 ```
 
 **DST edge cases**:
@@ -251,6 +278,7 @@ Prompt:  "What time is it 2 hours after March 9, 2025 at 1:30 AM
           in timezone America/New_York? Output in rfc 3339."
 
 Answer:  2025-03-09T04:30:00-04:00
+         (clocks spring forward at 2:00 AM, so 1:30 + 2h = 4:30, not 3:30)
 ```
 
 **Extraction from passage**:
@@ -267,6 +295,7 @@ Prompt:  "Read the following passage and extract the meeting date.
           and room 204 has already been reserved."
 
 Answer:  2029-03-12T17:25:00+11:00
+         (must pick the meeting date, not the distractor)
 ```
 
 ## Artifacts
