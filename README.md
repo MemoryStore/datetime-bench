@@ -11,22 +11,16 @@ Benchmark for measuring how reliably LLMs generate datetime values across common
 > If you ask an LLM to emit a machine-facing timestamp, use `rfc_3339`.
 
 - Default: `rfc_3339`
-- Also good: `iso_8601`
+- Effectively tied on measured accuracy: `iso_8601`
 - Fine for Python-only systems: `python_datetime`
-- Avoid for machine-facing contracts: `javascript_date`, `natural_language`
-- Do not ask the model for `unix_epoch` unless you have to; emit a string timestamp and convert to epoch in code
+- Avoid as machine-facing defaults: `javascript_date`, `natural_language`
+- Do not ask the model for `unix_epoch` unless you must; emit a string timestamp and convert to epoch in code
 
-`v0.3` confirms the same practical story as earlier versions, but under a more realistic benchmark shape: input diversity and parsing/normalization did not change the top recommendation. The best string formats are still a tight cluster, and `unix_epoch` is still far worse than every string format.
+`v0.3` confirms the same practical story as earlier versions, but under a more realistic benchmark shape: input diversity and parsing / normalization did not change the top recommendation. The best string formats are still a tight cluster, and `unix_epoch` is still much worse than every string format.
 
-## Why this benchmark exists
+## Quick Look
 
-LLM applications routinely turn relative or natural-language datetime mentions into grounded timestamps: "last Tuesday", "three hours ago", "the meeting after lunch". The output format matters because downstream code has to parse it reliably. A format that models generate incorrectly 10% of the time means 10% of timestamps are silently wrong before your application even starts validating business logic.
-
-This benchmark measures first-attempt generation reliability. It is aimed at implementers deciding what timestamp format to request from a model in production.
-
-## v0.3 headline results
-
-`v0.3` is the current benchmark baseline.
+`v0.3` is the current publication snapshot.
 
 - `22` active model cells across Google, Anthropic, OpenAI, Qwen, and GLM
 - `2` probe-skipped cells: `qwen_large_r`, `glm_med_r`
@@ -35,201 +29,308 @@ This benchmark measures first-attempt generation reliability. It is aimed at imp
 - `36,190` stored result rows
 - `$120.64` total spend
 
-| Format | Accuracy | Strict | 95% CI |
-| --- | --- | --- | --- |
-| `rfc_3339` | 88.24% | 88.24% | 87.33-89.09% |
-| `iso_8601` | 88.10% | 88.10% | 87.19-88.96% |
-| `python_datetime` | 87.64% | 87.64% | 86.72-88.51% |
-| `rfc_2822` | 84.35% | 80.35% | 83.34-85.32% |
-| `javascript_date` | 78.12% | 73.83% | 76.98-79.23% |
-| `natural_language` | 76.31% | 71.61% | 75.13-77.44% |
-| `unix_epoch` | 50.85% | 50.85% | 49.49-52.21% |
+![Datetime output reliability by format](reports/datetime_bench_v0.3/figures/format_accuracy.png)
 
-Recommendation:
+![Timezone wording changes accuracy even for the best formats](reports/datetime_bench_v0.3/figures/timezone_impact_top3.png)
 
-- Use `rfc_3339` by default
-- Treat `iso_8601` as effectively tied, but less precise as a prompt contract
-- Use `python_datetime` only when the consumer is explicitly Python-native
-- Treat `unix_epoch` as a separate numeric-conversion problem, not a peer string format
+### String-Only Leaderboard
 
-## What to use and what to avoid
+This is a datetime-format reliability leaderboard, not a general model ranking.
 
-### Use this by default
+| Rank | Model cell | Selected model | Mode | String-only accuracy |
+| --- | --- | --- | --- | --- |
+| `1` | `google_large_nr` | `google/gemini-3.1-pro-preview` | `non_reasoning` | `91.49%` |
+| `2` | `anthropic_med_r` | `anthropic/claude-sonnet-4.6` | `reasoning` | `91.35%` |
+| `3` | `openai_med_nr_chat` | `openai/gpt-5.3-chat` | `non_reasoning` | `91.13%` |
+| `4` | `openai_med_r` | `openai/gpt-5.4` | `reasoning` | `91.13%` |
+| `5` | `anthropic_large_r` | `anthropic/claude-opus-4.6` | `reasoning` | `90.85%` |
 
-`rfc_3339`
+Quick interpretation:
+
+- `rfc_3339` is the best default output contract at `88.24%` overall accuracy
+- `iso_8601` is effectively tied at `88.10%`; the recommendation difference is about contract specificity, not a meaningful accuracy gap
+- `python_datetime` stays close behind at `87.64%` and is a strong Python-native option
+- `unix_epoch` drops to `50.85%` and behaves like a separate numeric-conversion problem
+
+## For Prompt Engineers
+
+### Recommended Contract
+
+Ask for `rfc_3339` unless your system already has a strong reason to do otherwise.
 
 Why:
-- best overall string-format accuracy in `v0.3`
+
+- highest overall accuracy in `v0.3`
 - statistically tied with `iso_8601` and `python_datetime`
-- strict, portable, and cross-language
+- narrow, explicit wire contract
 - no weekday token, so no strict-vs-relaxed penalty
 
-### Also acceptable
+If you already use a full-timestamp `iso_8601` contract, that is fine. The benchmark result does not justify migrating away from it for accuracy reasons alone.
 
-`iso_8601`
+### Copy-Paste Prompt Pattern
 
-Why:
-- effectively tied with `rfc_3339`
-- strong syntactic validity and strong semantic accuracy
+```text
+System: Return exactly one RFC 3339 timestamp. No prose, no label, no code fence.
 
-Tradeoff:
-- broader name than the actual wire shape you usually want
+User: Resolve the datetime below. If the source uses timezone abbreviations or GMT-style wording, first normalize them to an explicit numeric offset or UTC/Z form. Output exactly one RFC 3339 timestamp:
 
-### Use only when your stack is Python-specific
+<source text>
+```
 
-`python_datetime`
+Good prompt-contract patterns:
 
-Why:
-- nearly tied with the top two
-- excellent for Python-native systems
+- `Return exactly one RFC 3339 timestamp.`
+- `Use a numeric offset or Z.`
+- `No explanation, no extra text.`
 
-Tradeoff:
-- runtime-specific string shape, weaker as a cross-language API contract
+Bad prompt-contract patterns:
 
-### Avoid for machine-facing output
+- `Return an ISO date.` — too broad
+- `Return a Unix timestamp.` — pushes exact numeric conversion onto the model
+- `Return the answer in natural language.` — invites phrasing drift
 
-`javascript_date`
+### Production Pipeline Pattern
 
-Why:
-- weekday tax
-- extra scaffold tokens
-- lower strict accuracy
+If you need a timestamp from an LLM in production:
 
-`natural_language`
+1. Normalize source timezone wording to `UTC`, `Z`, or an explicit numeric offset when possible.
+2. Ask the model for `rfc_3339`.
+3. Parse and validate the output in code.
+4. Convert to epoch in code if the downstream system requires it.
 
-Why:
-- weakest string format
-- phrasing drift and timezone wording drift
-- highest strict penalty among string formats
+```python
+from dateutil.parser import isoparse
 
-### Treat separately
+timestamp = call_llm(...)
+dt = isoparse(timestamp)
+epoch_seconds = int(dt.timestamp())
+```
 
-`unix_epoch`
+### What Matters Most In Practice
 
-Why:
-- only `50.85%` overall
-- much worse on arithmetic-heavy tasks
-- best practice is to have the model emit a canonical string timestamp and convert to epoch in deterministic code
+Timezone wording is one of the biggest controllable variables in the whole benchmark.
 
-## What LLMs are good at
+Weighted semantic accuracy for the top three formats:
 
-- emitting canonical string timestamps
-- parsing and normalizing compact structured inputs
-- handling `UTC`, `Z`, and numeric offsets
-- direct generation in top string formats
-
-## What LLMs are bad at
-
-- exact epoch conversion
-- arithmetic-heavy datetime tasks
-- multi-hop temporal reasoning
-- timezone abbreviations and `GMT`-style wording
-- weekday-bearing formats
-
-## Input-side findings that matter in production
-
-Timezone representation matters.
-
-Aggregate accuracy by source timezone style:
-
-| Source timezone style | Accuracy |
-| --- | --- |
-| `utc_or_z` | 85.45% |
-| `numeric_offset` | 83.00% |
-| `iana_zone` | 76.67% |
-| `abbr_or_gmt` | 74.99% |
+| Timezone style | `rfc_3339` | `iso_8601` | `python_datetime` |
+| --- | --- | --- | --- |
+| `utc_or_z` | `93.79%` | `93.33%` | `93.33%` |
+| `numeric_offset` | `93.89%` | `94.74%` | `94.32%` |
+| `iana_zone` | `84.96%` | `84.49%` | `85.34%` |
+| `abbr_or_gmt` | `83.43%` | `83.43%` | `81.67%` |
 
 Practical advice:
 
-- Prefer `UTC`, `Z`, or explicit numeric offsets in prompts and intermediate representations
-- Prefer normalizing timezone abbreviations before asking the model for a final machine-facing timestamp
-- Do not assume that familiar abbreviations like `EST`, `PDT`, or `GMT+0000` are safer than explicit offsets; they were worse
+- prefer `UTC`, `Z`, or explicit numeric offsets in prompts and intermediate representations
+- normalize timezone abbreviations like `EST`, `PDT`, or `GMT+0000` before the final formatting request
+- keep compact structured intermediate forms when possible; they are safer than free-form restatements
 
-For the top formats, the ugliest source pattern in `v0.3` was canonical text paired with timezone abbreviations:
+Observed reasoning-vs-non-reasoning uplift for the top formats:
 
-| Format | Canonical text + `abbr_or_gmt` |
-| --- | --- |
-| `rfc_3339` | 59.60% |
-| `iso_8601` | 60.10% |
-| `python_datetime` | 55.56% |
+| Format | Non-reasoning | Reasoning | Observed delta |
+| --- | --- | --- | --- |
+| `rfc_3339` | `86.22%` | `91.16%` | `+4.94` points |
+| `iso_8601` | `86.25%` | `90.78%` | `+4.53` points |
+| `python_datetime` | `85.20%` | `91.16%` | `+5.95` points |
 
-That is the strongest practical reason to normalize timezone wording before the final formatting step.
+> [!IMPORTANT]
+> These are production-configuration comparisons, not a clean causal estimate of reasoning alone. Reasoning cells ran at `temperature=1.0`; non-reasoning cells ran at `temperature=0.0`.
 
-## Task-level findings
+### How Failures Break Down
 
-Best format by task family:
+Among incorrect string-format outputs in `v0.3`, the dominant failure modes were:
+
+- `syntax_error`: `30.02%`
+- `arithmetic_error`: `28.45%`
+- `extraction_error`: `12.97%`
+- `timezone_error`: `12.41%`
+- `day_of_week_error`: `11.82%`
+
+This lines up with the practical advice:
+
+- the model is usually better at canonical string emission than exact arithmetic-heavy conversion
+- weekday-bearing formats pay a real tax
+- timezone wording drift shows up as a distinct failure mode, not just noise
+
+## For Researchers
+
+### What This Benchmark Measures
+
+`datetime-bench` measures zero-shot, first-attempt reliability for model-generated datetime outputs. The main question is not whether models understand time in the abstract, but which requested output format gives the most reliable machine-parseable answer when the model must both solve the task and emit the result in a specific wire shape.
+
+Current `v0.3` scope:
+
+- `7` output formats: `iso_8601`, `rfc_3339`, `rfc_2822`, `python_datetime`, `javascript_date`, `natural_language`, `unix_epoch`
+- `7` task families and `235` scenarios
+- `24` planned model cells, `22` active after probe filtering
+- OpenRouter-hosted models across Google, Anthropic, OpenAI, Qwen, and GLM
+
+### Methods In Brief
+
+Each scenario is expanded across all output formats. The underlying task stays the same while the requested output format changes, which isolates format reliability from task difficulty.
+
+Each response is scored on three levels:
+
+1. **Syntactic validity**: does the output parse as the requested format?
+2. **Semantic correctness**: does the parsed datetime match the gold answer within the task-specific tolerance?
+3. **Strict correctness**: is the delta exactly zero seconds and the parse strict, with weekday consistency enforced where relevant?
+
+The headline accuracy metric in the README is semantic correctness.
+
+### Key Caveats And Limitations
+
+- zero-shot only
+- free-text generation only; no structured output / JSON mode / constrained decoding
+- one trial per case; no repeated sampling variance estimate
+- English-only prompts
+- OpenRouter is the only provider in this benchmark, so routing and provider implementation details may matter
+- no retry or self-correction behavior is tested
+- reasoning-vs-non-reasoning comparisons are confounded by request shape, especially `temperature`
+- the timezone chart is a descriptive benchmark aggregate, not a controlled causal estimate of timezone wording alone
+
+### Why `rfc_3339` Over `iso_8601`
+
+The measured gap is tiny: `rfc_3339` finished at `88.24%`; `iso_8601` finished at `88.10%`. The reason to prefer `rfc_3339` is not that it is dramatically easier for the model. The reason is that `rfc_3339` names a narrower, more precise timestamp contract.
+
+If you ask for `iso_8601`, you are asking for a broad family of valid shapes. If you ask for `rfc_3339`, you are asking for a specific full timestamp shape that is easier to use as a production prompt contract.
+
+### Task-Family Findings
+
+Best and worst format by task family:
 
 | Task type | Best format | Accuracy | Worst format | Accuracy |
 | --- | --- | --- | --- | --- |
-| `direct_generation` | `rfc_3339` | 99.87% | `unix_epoch` | 60.26% |
-| `temporal_arithmetic` | `rfc_3339` | 79.09% | `unix_epoch` | 40.57% |
-| `multi_hop_reasoning` | `python_datetime` | 86.36% | `unix_epoch` | 45.06% |
-| `format_conversion` | `iso_8601` | 92.73% | `unix_epoch` | 57.14% |
-| `extraction_from_passage` | `rfc_3339` | 79.55% | `unix_epoch` | 46.67% |
-| `edge_cases` | `python_datetime` | 85.71% | `unix_epoch` | 48.57% |
-| `parsing_normalization` | `iso_8601` | 99.09% | `unix_epoch` | 61.64% |
+| `direct_generation` | `rfc_3339` | `99.87%` | `unix_epoch` | `60.26%` |
+| `temporal_arithmetic` | `rfc_3339` | `79.09%` | `unix_epoch` | `40.57%` |
+| `multi_hop_reasoning` | `python_datetime` | `86.36%` | `unix_epoch` | `45.06%` |
+| `format_conversion` | `iso_8601` | `92.73%` | `unix_epoch` | `57.14%` |
+| `extraction_from_passage` | `rfc_3339` | `79.55%` | `unix_epoch` | `46.67%` |
+| `edge_cases` | `python_datetime` | `85.71%` | `unix_epoch` | `48.57%` |
+| `parsing_normalization` | `iso_8601` | `99.09%` | `unix_epoch` | `61.64%` |
 
-Takeaway:
+The top string formats remain strong across all task families. The hard cases are still arithmetic, multi-hop reasoning, and messy timezone handling.
 
-- top string formats stay strong across all task families
-- temporal arithmetic and multi-hop reasoning remain the weak spots
-- `unix_epoch` collapses hardest exactly where you would least want hidden errors
+## What The Model Actually Has To Do
 
-## Model-family takeaways
+These are not simple format-conversion tests. The benchmark requires the model to do real reasoning, then emit the answer in a specific format.
 
-Short version:
+**Direct generation**:
 
-- Google and OpenAI are strong on string formats and comparatively strong on epoch
-- Anthropic is solid on strings, weaker on epoch
-- GLM is competitive on strings and weak on epoch
-- Qwen trails materially
-- two reasoning cells failed probe and were skipped: `qwen_large_r`, `glm_med_r`
+```text
+Prompt:  "Convert the following datetime to rfc 3339:
+          July 14, 2020 at 8:10 AM, US Central time (CDT, UTC-5)"
 
-This benchmark is primarily about format choice, not a model leaderboard, but the model-family pattern is stable enough to matter if you depend on epoch or arithmetic-heavy timestamp generation.
+Answer:  2020-07-14T08:10:00-05:00
+```
 
-## Why `rfc_3339` still wins
+**Temporal arithmetic**:
 
-`rfc_3339` and `iso_8601` are effectively tied in this benchmark because the requested output shape is the same full timestamp shape. The reason to prefer `rfc_3339` anyway is contract clarity.
+```text
+Prompt:  "What is the date and time exactly 47 days after
+          March 9, 2028 at 3:00 PM UTC? Output in rfc 3339."
 
-If you ask for `rfc_3339`, you are asking for a narrow, specific timestamp shape.
+Answer:  2028-04-25T15:00:00+00:00
+```
 
-If you ask for `iso_8601`, you are asking for a broader family of valid shapes.
+**Multi-hop reasoning**:
 
-The benchmark result says:
-- both are good
-- `rfc_3339` is the better production prompt contract
+```text
+Prompt:  "A server was deployed on January 15, 2027 at 9:00 AM UTC.
+          Its SSL certificate expires exactly 90 days later.
+          A renewal reminder should fire 7 days before expiry
+          at the same local time.
+          When does the reminder fire? Output in rfc 3339."
+
+Answer:  2027-04-08T09:00:00+00:00
+```
+
+**DST edge cases**:
+
+```text
+Prompt:  "What time is it 2 hours after March 9, 2025 at 1:30 AM
+          in timezone America/New_York? Output in rfc 3339."
+
+Answer:  2025-03-09T04:30:00-04:00
+```
+
+**Extraction from passage**:
+
+```text
+Prompt:  "Read the following passage and extract the meeting date.
+          Output in rfc 3339.
+
+          Priya, the VP of Operations, circulated a note to 17 attendees
+          about the upcoming review. The final agenda was locked on
+          March 12, 2029 at 5:25 PM +11:00. A separate travel hold
+          remains in place until June 3, 2031 at 10:15 AM +11:00.
+          The discussion will cover risk review and compliance,
+          and room 204 has already been reserved."
+
+Answer:  2029-03-12T17:25:00+11:00
+```
 
 ## Artifacts
 
-Current v0.3 report artifacts:
+Current `v0.3` report artifacts:
 
 - [summary.md](reports/datetime_bench_v0.3/summary.md)
-- [LEARNINGS.md](reports/datetime_bench_v0.3/LEARNINGS.md)
 - [PROGRAM_REPORT.md](reports/datetime_bench_v0.3/PROGRAM_REPORT.md)
+- [LEARNINGS.md](reports/datetime_bench_v0.3/LEARNINGS.md)
+- [format_comparison.csv](reports/datetime_bench_v0.3/format_comparison.csv)
 - [format_comparison_string_only.csv](reports/datetime_bench_v0.3/format_comparison_string_only.csv)
-- [epoch_summary.csv](reports/datetime_bench_v0.3/epoch_summary.csv)
 - [input_variant_summary.csv](reports/datetime_bench_v0.3/input_variant_summary.csv)
+- [epoch_summary.csv](reports/datetime_bench_v0.3/epoch_summary.csv)
+- [error_taxonomy.csv](reports/datetime_bench_v0.3/error_taxonomy.csv)
 - [cost_report.csv](reports/datetime_bench_v0.3/cost_report.csv)
 - [results_all.csv](reports/datetime_bench_v0.3/results_all.csv) — full row-level results for every model × format × scenario
+- [render_readme_figures.py](scripts/render_readme_figures.py) — regenerates the README quick-look figures from the checked-in `v0.3` snapshot
 
 > [!IMPORTANT]
-> The checked-in `reports/` directory is a publication snapshot. The run artifacts and generated CSVs for `v0.3` are included in this checkout, but earlier historical runs are not all present in raw form.
+> The checked-in `reports/` directory is a publication snapshot. The `v0.3` run artifacts and generated CSVs are included in this checkout, but earlier historical runs are not all present in raw form.
 
-> [!IMPORTANT]
-> Benchmark request shape is intentional: reasoning cells run at `temperature=1.0`, non-reasoning cells at `temperature=0.0`. Read reasoning-vs-non-reasoning comparisons as production-configuration comparisons, not a clean causal estimate of "reasoning effect".
+## How To Cite
 
-## Version history
+If you want to cite this benchmark, cite the repository and the `v0.3` snapshot explicitly.
+
+```bibtex
+@misc{datetime_bench_v0_3,
+  title = {datetime-bench v0.3: Benchmark for Measuring Datetime Format Generation Reliability in LLMs},
+  author = {{Memory Store}},
+  year = {2026},
+  url = {https://github.com/MemoryStore/datetime-bench},
+  note = {GitHub repository, v0.3 report snapshot, accessed 2026-03-26}
+}
+```
+
+## Version History
 
 | Version | Main result | Spend |
 | --- | --- | --- |
-| `v0.1` | `iso_8601` led the original three-format benchmark | ~$7.45 |
-| `v0.1.5` | `python_datetime`, `rfc_3339`, and `iso_8601` formed a top cluster | ~$15.37 |
-| `v0.2` | same practical recommendation, with stronger family/size evidence | $148.45 |
-| `v0.3` | same recommendation holds under input diversity and parsing/normalization | $120.64 |
+| `v0.1` | `iso_8601` led the original three-format benchmark | `~$7.45` |
+| `v0.1.5` | `python_datetime`, `rfc_3339`, and `iso_8601` formed a top cluster | `~$15.37` |
+| `v0.2` | same practical recommendation, with stronger family / size evidence | `$148.45` |
+| `v0.3` | same recommendation holds under input diversity and parsing / normalization | `$120.64` |
 
-The recommendation did not materially change across versions. `v0.3` mostly strengthens confidence that the advice survives messier and more realistic inputs.
+The recommendation did not materially change across versions. `v0.3` mainly strengthens confidence that the advice survives messier and more realistic inputs.
 
-## Running the benchmark
+## Related Work
+
+`datetime-bench` focuses on a specific question: which output format do LLMs produce most reliably? Several adjacent benchmarks exist, but they do not directly target output-format reliability as a production contract problem.
+
+Closest work:
+
+- [DATETIME](https://arxiv.org/abs/2504.16155) (Gaere & Wangenheim, 2025) — benchmarks datetime translation to ISO 8601 and datetime arithmetic across 58 models; closest in domain, but not a format-comparison benchmark
+- [DateLogicQA](https://arxiv.org/abs/2412.13377) (NAACL 2025 SRW) — studies how date format affects LLM comprehension on the input side; complementary to this benchmark's output-side question
+
+Temporal reasoning benchmarks with a broader task focus:
+
+- [TimeBench](https://aclanthology.org/2024.acl-long.66.pdf) (ACL 2024) — event ordering, duration QA, and temporal NLI
+- [TRAM](https://aclanthology.org/2024.findings-acl.382/) (ACL 2024) — large multiple-choice temporal reasoning benchmark
+- [Test of Time](https://arxiv.org/abs/2406.09170) (2024) — temporal semantics and arithmetic
+
+Those benchmarks test whether LLMs understand time. `datetime-bench` tests whether they can emit a downstream-safe timestamp format after doing the reasoning.
+
+## Running The Benchmark
 
 ```bash
 uv sync
@@ -244,7 +345,7 @@ datetime-bench
 
 Raw artifacts go to `runs/`. Analysis outputs go to `reports/`.
 
-## Repo layout
+## Repo Layout
 
 ```text
 src/datetime_bench/
@@ -261,131 +362,17 @@ reports/
   datetime_bench_v0.3/
 ```
 
-## What the model actually has to do
-
-These are not simple format conversion tests. The benchmark requires the model to do real reasoning — temporal arithmetic, multi-step chaining, and edge case handling — then produce the answer in a specific format. The format is the variable; the underlying task stays the same.
-
-**Direct generation** — convert a datetime to a target format:
-
-```
-Prompt:  "Convert the following datetime to rfc 3339:
-          July 14, 2020 at 8:10 AM, US Central time (CDT, UTC-5)"
-
-Answer:  2020-07-14T08:10:00-05:00
-```
-
-**Temporal arithmetic** — the model has to do math:
-
-```
-Prompt:  "What is the date and time exactly 47 days after
-          March 9, 2028 at 3:00 PM UTC? Output in rfc 3339."
-
-Answer:  2028-04-25T15:00:00+00:00
-```
-
-**Multi-hop reasoning** — chained steps:
-
-```
-Prompt:  "A server was deployed on January 15, 2027 at 9:00 AM UTC.
-          Its SSL certificate expires exactly 90 days later.
-          A renewal reminder should fire 7 days before expiry
-          at the same local time.
-          When does the reminder fire? Output in rfc 3339."
-
-Answer:  2027-04-08T09:00:00+00:00
-         (deploy + 90 days = April 15, minus 7 days = April 8)
-```
-
-**DST edge cases** — tricky timezone transitions:
-
-```
-Prompt:  "What time is it 2 hours after March 9, 2025 at 1:30 AM
-          in timezone America/New_York? Output in rfc 3339."
-
-Answer:  2025-03-09T04:30:00-04:00
-         (clocks spring forward at 2:00 AM, so 1:30 + 2h = 4:30, not 3:30)
-```
-
-**Extraction from passage** — find the right datetime buried in text:
-
-```
-Prompt:  "Read the following passage and extract the meeting date.
-          Output in rfc 3339.
-
-          Priya, the VP of Operations, circulated a note to 17 attendees
-          about the upcoming review. The final agenda was locked on
-          March 12, 2029 at 5:25 PM +11:00. A separate travel hold
-          remains in place until June 3, 2031 at 10:15 AM +11:00.
-          The discussion will cover risk review and compliance,
-          and room 204 has already been reserved."
-
-Answer:  2029-03-12T17:25:00+11:00
-         (must pick the meeting date, not the distractor)
-```
-
-Each of these is tested across all 7 output formats, across 22 models. The same prompt, the same expected answer — only the format changes. That is how we isolate format reliability from task difficulty.
-
-## How scoring works
-
-Each response is scored on three levels:
-
-1. **Syntactic validity** — does the output parse as a valid instance of the requested format? A `rfc_3339` response must match the RFC 3339 grammar. A `unix_epoch` response must be a valid integer or float.
-
-2. **Semantic correctness** — does the parsed datetime match the gold answer within a tolerance? The parsed output and the gold datetime are both converted to UTC, and the absolute delta in seconds is computed. The threshold varies by task type (tighter for direct generation, slightly looser for multi-hop reasoning).
-
-3. **Strict correctness** — is the delta exactly zero seconds *and* was the output parsed in strict mode (no fallback parsing)? For weekday-bearing formats (`rfc_2822`, `javascript_date`, `natural_language`), the weekday must also be calendar-consistent.
-
-The headline "accuracy" number in the results table is **semantic correctness**. The "strict" column is the stricter measure. When the two diverge (e.g., `rfc_2822` at 84.35% semantic vs. 80.35% strict), the gap is usually caused by weekday errors or minor formatting deviations that fallback parsing can recover from.
-
-## Format accuracy
-
-```
-rfc_3339          ██████████████████████████████████████████████████████████  88.24%
-iso_8601          █████████████████████████████████████████████████████████▉  88.10%
-python_datetime   █████████████████████████████████████████████████████████▌  87.64%
-rfc_2822          ██████████████████████████████████████████████████████▊     84.35%
-javascript_date   █████████████████████████████████████████████████████       78.12%
-natural_language  ████████████████████████████████████████████████████        76.31%
-unix_epoch        █████████████████████████████████▍                         50.85%
-```
-
-## Related work
-
-datetime-bench focuses on a specific question: which output format do LLMs produce most reliably? Several adjacent benchmarks exist, but none directly address format-level generation reliability.
-
-**Closest work:**
-
-- [DATETIME](https://arxiv.org/abs/2504.16155) (Gaere & Wangenheim, 2025) — benchmarks LLM datetime translation to ISO 8601 and datetime arithmetic across 58 models. Focuses on translation accuracy, not on comparing reliability across output formats.
-- [DateLogicQA](https://arxiv.org/abs/2412.13377) (NAACL 2025 SRW) — tests how date format affects LLM *comprehension* (input side). Finds format matters for understanding, which is complementary to our finding that format matters for generation (output side).
-
-**Temporal reasoning benchmarks (different focus):**
-
-- [TimeBench](https://aclanthology.org/2024.acl-long.66.pdf) (ACL 2024) — 10 temporal reasoning datasets covering event ordering, duration QA, and temporal NLI
-- [TRAM](https://aclanthology.org/2024.findings-acl.382/) (ACL 2024) — 526K temporal reasoning MCQs
-- [Test of Time](https://arxiv.org/abs/2406.09170) (2024) — temporal semantics and arithmetic
-
-These benchmarks test whether LLMs *understand* time. datetime-bench tests whether they can *output* correctly formatted timestamps — a different, more mechanical question, but one with direct production impact.
-
 ## Contributing
 
 Contributions are welcome. The most useful additions are:
 
-**Add a model.** Edit the `MODEL_CELLS` list in `src/datetime_bench/config.py` with the new model's OpenRouter identifier. Run the benchmark with `--dry-run` first to verify the model resolves and responds to the probe.
+**Add a model.** Edit the `MODEL_CELLS` list in `src/datetime_bench/config.py` with the new model's OpenRouter identifier. Run `datetime-bench --dry-run` first to verify that the model resolves and responds to the probe.
 
 **Add an output format.** Add a new `FormatSpec` entry in the format configuration, implement a parser in `src/datetime_bench/evaluation/parsers.py`, and wire it into the scoring dispatch in `src/datetime_bench/evaluation/scoring.py`.
 
 **Add a task family.** Create a new task generator in `src/datetime_bench/tasks/`, register it in the task loader, and add a semantic threshold in `config.py` if the task type warrants a different tolerance.
 
-**Report an issue with scoring.** If you find a case where the evaluation is wrong (e.g., a correct response scored as incorrect, or vice versa), open an issue with the `case_id`, model, and expected vs. actual score.
-
-To run locally:
-
-```bash
-uv sync
-export OPENROUTER_API_KEY="sk-or-..."
-datetime-bench --dry-run   # verify setup
-datetime-bench             # full run
-```
+**Report a scoring issue.** If you find a case where the evaluation is wrong, open an issue with the `case_id`, model, and expected vs. actual score.
 
 ## License
 
